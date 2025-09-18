@@ -1,18 +1,18 @@
 const prisoners_dilemma = @import("prisoners_dilemma");
-
 const std = @import("std");
+var prng = std.Random.DefaultPrng.init(42);
 
-var prng: std.rand.DefaultPrng = undefined;
-
-fn random_float_zero_one() f32 {
-    const value = prng.random().int(u32);
-    return @as(f32, @floatFromInt(value)) / @as(f32, std.math.maxInt(u32));
+fn toFloat(input: u16) f32 {
+    return @as(f32, @floatFromInt(input));
 }
 
-const Point = struct {
-    x: f32,
-    y: f32,
-};
+fn toInt(input: f32) u16 {
+    return @as(u16, @intFromFloat(input));
+}
+
+fn random_float_zero_one() f32 {
+    return prng.random().float(f32);
+}
 
 const Prisoner = struct {
     forgiveness: f32,
@@ -24,7 +24,6 @@ const Interaction = struct { aIndex: usize, bIndex: usize, result: usize };
 // many strategies different forgiveness percentages
 // many agents with a strategy
 // many rounds of interactions with other random agents
-
 //  reward for interacting or defecting
 //          a coop | a defect
 // b coop        1 | 2
@@ -36,7 +35,7 @@ const Interaction = struct { aIndex: usize, bIndex: usize, result: usize };
 // b defect      2 | 3
 
 fn interact(a: Prisoner, b: Prisoner, interactionHistory: *const std.ArrayList(u8)) u8 {
-    const lastInteraction = interactionHistory[interactionHistory.items.len - 1];
+    const lastInteraction = interactionHistory.items[interactionHistory.items.len - 1];
 
     // if the interaction is odd the a defected
     const didADefect = lastInteraction % 2 == 1;
@@ -45,6 +44,7 @@ fn interact(a: Prisoner, b: Prisoner, interactionHistory: *const std.ArrayList(u
 
     // TODO: These have to be replaced with a strategy function where each prisoner can have a strategy
     // TODO: each strategy should be identified using an enum -> a function will then run the strategy using that enum
+
     // cooperate if b cooperated last else defect unless random value hits forgiveness threshold
     const isNewAChoiceCooperate = if (didBDefect) random_float_zero_one() < a.forgiveness else true;
     const isNewBChoiceCooperate = if (didADefect) random_float_zero_one() < b.forgiveness else true;
@@ -56,36 +56,44 @@ fn interact(a: Prisoner, b: Prisoner, interactionHistory: *const std.ArrayList(u
         return 1;
     } else if (isNewAChoiceCooperate and !isNewBChoiceCooperate) {
         return 2;
-    } else if (!isNewAChoiceCooperate and !isNewBChoiceCooperate) {
+    } else {
         return 3;
     }
 }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer gpa.deinit();
+    defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // initialize the rng
-    prng = std.rand.DefaultPrng.init(42);
+    const numberOfPrisoners: u16 = 1000;
 
-    const numberOfPrisoners: usize = 1000;
+    var prisoners: [numberOfPrisoners]Prisoner = undefined;
 
-    var numbers = std.ArrayList(Prisoner).initCapacity(allocator, numberOfPrisoners);
-    defer numbers.deinit();
-
-    //std.debug.print("Points stored: {d}\n", .{});
-    var prisoners: Prisoner[numberOfPrisoners] = undefined;
-
-    const numberOfInteractions: usize = 1000 * 1000 * 30;
-    var interactions: Interaction[numberOfInteractions] = undefined;
-
-    var i: usize = 0;
+    var i: u16 = 0;
     while (i < numberOfPrisoners) : (i += 1) {
         // uniform distribution of forgiveness
-        const forgiveness = 1 / numberOfPrisoners * i;
+        const forgiveness = 1.0 / toFloat(numberOfPrisoners) * toFloat(i);
         prisoners[i] = Prisoner{ .forgiveness = forgiveness, .score = 1 };
     }
+
+    // prisoners are initialized
+    // pick two and let them iteract
+    // store the interaction in an array and use the index to that entry
+    const numberOfInteractions: u16 = 20000;
+
+    i = 0;
+    while (i < numberOfInteractions) : (i += 1) {
+        const randomPrisoner1Index: u16 = toInt(std.math.floor(random_float_zero_one() * toFloat(numberOfPrisoners)));
+        const randomPrisoner2Index: u16 = toInt(std.math.floor(random_float_zero_one() * toFloat(numberOfPrisoners)));
+
+        // const prisoner1 = prisoners[randomPrisoner1Index];
+        // const prisoner2 = prisoners[randomPrisoner2Index];
+
+        std.debug.print("Prisoner 1 {}, Prisoner 2 {}\n", .{ randomPrisoner1Index, randomPrisoner2Index });
+    }
+
+    _ = allocator; // Mark allocator as used to avoid warning
 }
 
 // test "simple test" {
