@@ -19,8 +19,6 @@ const Prisoner = struct {
     score: f32,
 };
 
-const Interaction = struct { aIndex: usize, bIndex: usize, result: usize };
-
 // many strategies different forgiveness percentages
 // many agents with a strategy
 // many rounds of interactions with other random agents
@@ -34,30 +32,24 @@ const Interaction = struct { aIndex: usize, bIndex: usize, result: usize };
 // b coop        0 | 1
 // b defect      2 | 3
 
-fn interact(a: Prisoner, b: Prisoner, interactionHistory: *const std.ArrayList(u8)) u8 {
-    const lastInteraction = interactionHistory.items[interactionHistory.items.len - 1];
+const Action = enum { Betray, Cooperate };
 
-    // if the interaction is odd the a defected
-    const didADefect = lastInteraction % 2 == 1;
-    // if its 2 or 3 then b defected
-    const didBDefect = lastInteraction == 2 or lastInteraction == 3;
+const Strategy = enum { TitForTat, AlwaysBetray };
 
-    // TODO: These have to be replaced with a strategy function where each prisoner can have a strategy
-    // TODO: each strategy should be identified using an enum -> a function will then run the strategy using that enum
+const StrategyError = error{InvalidStrategy};
 
-    // cooperate if b cooperated last else defect unless random value hits forgiveness threshold
-    const isNewAChoiceCooperate = if (didBDefect) random_float_zero_one() < a.forgiveness else true;
-    const isNewBChoiceCooperate = if (didADefect) random_float_zero_one() < b.forgiveness else true;
+fn titForTat(opponents_history: *std.array_list.Managed(Action)) Action {
+    return if (opponents_history.items.len > 0) opponents_history.items[opponents_history.items.len - 1] else Action.Cooperate;
+}
 
-    // could also be done using some binary arithmetic instead
-    if (isNewAChoiceCooperate and isNewBChoiceCooperate) {
-        return 0;
-    } else if (!isNewAChoiceCooperate and isNewBChoiceCooperate) {
-        return 1;
-    } else if (isNewAChoiceCooperate and !isNewBChoiceCooperate) {
-        return 2;
-    } else {
-        return 3;
+fn apply_strategy(opponents_history: *std.array_list.Managed(Action), strategy: Strategy) !Action {
+    switch (strategy) {
+        Strategy.AlwaysBetray => {
+            return Action.Betray;
+        },
+        Strategy.TitForTat => {
+            return titForTat(opponents_history);
+        },
     }
 }
 
@@ -66,34 +58,59 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const numberOfPrisoners: u16 = 1000;
+    const actions_length: u8 = 30;
 
-    var prisoners: [numberOfPrisoners]Prisoner = undefined;
+    var interactions_map = std.hash_map.AutoHashMap(u64, *std.array_list.Managed(Action)).init(allocator);
+    defer interactions_map.deinit();
 
-    var i: u16 = 0;
-    while (i < numberOfPrisoners) : (i += 1) {
-        // uniform distribution of forgiveness
-        const forgiveness = 1.0 / toFloat(numberOfPrisoners) * toFloat(i);
-        prisoners[i] = Prisoner{ .forgiveness = forgiveness, .score = 1 };
+    var score_prisoner_a: u16 = 0;
+    var actions_prisoner_a = std.array_list.Managed(Action).init(allocator);
+    defer actions_prisoner_a.deinit();
+
+    var score_prisoner_b: u16 = 0;
+    var actions_prisoner_b = std.array_list.Managed(Action).init(allocator);
+    defer actions_prisoner_b.deinit();
+
+    var actions_pointer: u8 = 0;
+
+    while (actions_pointer < actions_length) : (actions_pointer += 1) {
+        // a always betrays and so doesnt need the previous action of b
+
+        // strategy of b = copy the last action of a
+        // strategy of a = betray
+
+        const new_action_a = try apply_strategy(&actions_prisoner_b, Strategy.TitForTat);
+        const new_action_b = try apply_strategy(&actions_prisoner_a, Strategy.AlwaysBetray);
+
+        try actions_prisoner_a.append(new_action_a);
+        try actions_prisoner_b.append(new_action_b);
+
+        // based on the score matrix we add the new scores to the prisoners scores
+        //  reward for interacting or defecting
+        //          a coop | a defect
+        // b coop        1 | 2
+        // b defect      2 | 0
+        if (new_action_a == Action.Cooperate and new_action_b == Action.Cooperate) {
+            score_prisoner_a += 1;
+            score_prisoner_b += 1;
+        } else if (new_action_a == Action.Betray and new_action_b == Action.Betray) {
+            // This is just here for sake of completeness
+            score_prisoner_a += 0;
+            score_prisoner_b += 0;
+        } else if (new_action_a == Action.Betray and new_action_b == Action.Cooperate) {
+            score_prisoner_a += 2;
+            score_prisoner_b += 0;
+        } else if (new_action_a == Action.Cooperate and new_action_b == Action.Betray) {
+            score_prisoner_a += 0;
+            score_prisoner_b += 2;
+        }
     }
 
-    // prisoners are initialized
-    // pick two and let them iteract
-    // store the interaction in an array and use the index to that entry
-    const numberOfInteractions: u16 = 20000;
+    std.debug.print("prisoner a actions: {any} final score: {any}\n", .{ actions_prisoner_a, score_prisoner_a });
+    std.debug.print("prisoner b actions: {any} final score: {any}\n", .{ actions_prisoner_b, score_prisoner_b });
 
-    i = 0;
-    while (i < numberOfInteractions) : (i += 1) {
-        const randomPrisoner1Index: u16 = toInt(std.math.floor(random_float_zero_one() * toFloat(numberOfPrisoners)));
-        const randomPrisoner2Index: u16 = toInt(std.math.floor(random_float_zero_one() * toFloat(numberOfPrisoners)));
-
-        // const prisoner1 = prisoners[randomPrisoner1Index];
-        // const prisoner2 = prisoners[randomPrisoner2Index];
-
-        std.debug.print("Prisoner 1 {}, Prisoner 2 {}\n", .{ randomPrisoner1Index, randomPrisoner2Index });
-    }
-
-    _ = allocator; // Mark allocator as used to avoid warning
+    //     const randomPrisoner1Index: u16 = toInt(std.math.floor(random_float_zero_one() * toFloat(numberOfPrisoners)));
+    //     const randomPrisoner2Index: u16 = toInt(std.math.floor(random_float_zero_one() * toFloat(numberOfPrisoners)));
 }
 
 // test "simple test" {
