@@ -15,8 +15,8 @@ fn random_float_zero_one() f32 {
 }
 
 const Prisoner = struct {
-    forgiveness: f32,
-    score: f32,
+    strategy: Strategy,
+    score: u32,
 };
 
 // many strategies different forgiveness percentages
@@ -34,15 +34,38 @@ const Prisoner = struct {
 
 const Action = enum { Betray, Cooperate };
 
-const Strategy = enum { TitForTat, AlwaysBetray };
+const Strategy = enum { TitForTat, AlwaysBetray, TitForTatBetrayLast, TitForTat10pctForgiveness };
 
 const StrategyError = error{InvalidStrategy};
 
-fn titForTat(opponents_history: *std.array_list.Managed(Action)) Action {
+fn titForTat(opponents_history: *const std.array_list.Managed(Action)) Action {
     return if (opponents_history.items.len > 0) opponents_history.items[opponents_history.items.len - 1] else Action.Cooperate;
 }
 
-fn apply_strategy(opponents_history: *std.array_list.Managed(Action), strategy: Strategy) !Action {
+fn titForTat10pctForgiveness(opponents_history: *const std.array_list.Managed(Action)) Action {
+    const action_previous = if (opponents_history.items.len > 0) opponents_history.items[opponents_history.items.len - 1] else Action.Cooperate;
+    if (action_previous == Action.Cooperate) {
+        return Action.Cooperate;
+    }
+
+    // we forgive 10pct of the time
+    const should_forgive = random_float_zero_one() < 0.9;
+    if (action_previous == Action.Betray and should_forgive) {
+        return Action.Cooperate;
+    }
+
+    return Action.Betray;
+}
+
+fn titForTatBetrayLast(opponents_history: *const std.array_list.Managed(Action)) Action {
+    if (opponents_history.items.len < 29) {
+        return titForTat(opponents_history);
+    } else {
+        return Action.Betray;
+    }
+}
+
+fn apply_strategy(opponents_history: *const std.array_list.Managed(Action), strategy: Strategy) !Action {
     switch (strategy) {
         Strategy.AlwaysBetray => {
             return Action.Betray;
@@ -50,67 +73,154 @@ fn apply_strategy(opponents_history: *std.array_list.Managed(Action), strategy: 
         Strategy.TitForTat => {
             return titForTat(opponents_history);
         },
+        Strategy.TitForTatBetrayLast => {
+            return titForTatBetrayLast(opponents_history);
+        },
+        Strategy.TitForTat10pctForgiveness => {
+            return titForTat10pctForgiveness(opponents_history);
+        },
     }
 }
+
+fn comparePrisonersByScore(context: void, a: Prisoner, b: Prisoner) bool {
+    // The context argument is often unused, so we name it '_' to avoid warnings.
+    _ = context;
+
+    return a.score < b.score;
+}
+
+const number_of_strategies = @typeInfo(Strategy).@"enum".fields.len;
+
+const index_to_strategy = [number_of_strategies]Strategy{ Strategy.AlwaysBetray, Strategy.TitForTat, Strategy.TitForTatBetrayLast, Strategy.TitForTat10pctForgiveness };
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const actions_length: u8 = 30;
+    const interactions_per_pairing: u8 = 30;
 
-    var interactions_map = std.hash_map.AutoHashMap(u64, *std.array_list.Managed(Action)).init(allocator);
+    var interactions_map = std.hash_map.AutoHashMap(u64, std.array_list.Managed(Action)).init(allocator);
+    try interactions_map.ensureTotalCapacity(130_000);
     defer interactions_map.deinit();
 
-    var score_prisoner_a: u16 = 0;
-    var actions_prisoner_a = std.array_list.Managed(Action).init(allocator);
-    defer actions_prisoner_a.deinit();
+    const number_of_prisoners: u16 = 1000;
 
-    var score_prisoner_b: u16 = 0;
-    var actions_prisoner_b = std.array_list.Managed(Action).init(allocator);
-    defer actions_prisoner_b.deinit();
+    var prisoners = std.array_list.Managed(Prisoner).init(allocator);
+    defer prisoners.deinit();
 
-    var actions_pointer: u8 = 0;
+    var prisoner_counter: u16 = 0;
+    while (prisoner_counter < number_of_prisoners) : (prisoner_counter += 1) {
+        //                                                                      based in the index this prsoner gets a strategy
+        //                                                                      prisoner_counter % number_of_strategies gives use wrap around behaviour incase the index is larger than the number of strategies we have
+        try prisoners.append(Prisoner{ .score = 0, .strategy = index_to_strategy[prisoner_counter % number_of_strategies] });
+    }
 
-    while (actions_pointer < actions_length) : (actions_pointer += 1) {
-        // a always betrays and so doesnt need the previous action of b
+    const PAIRINGS_PER_ROUND: u32 = 100_000;
 
-        // strategy of b = copy the last action of a
-        // strategy of a = betray
+    var pairings_counter: u32 = 0;
+    while (pairings_counter < PAIRINGS_PER_ROUND) : (pairings_counter += 1) {
+        // 1. get two random prisoners
+        // the actions will be of the prisoner with the small bits in the index
+        // this also means that prisoner A will always have to be the one with the smaller index and B with the bigger index
+        const index_prisoner_A = toInt(random_float_zero_one() * toFloat(number_of_prisoners));
+        const index_prisoner_B = toInt(random_float_zero_one() * toFloat(number_of_prisoners));
 
-        const new_action_a = try apply_strategy(&actions_prisoner_b, Strategy.TitForTat);
-        const new_action_b = try apply_strategy(&actions_prisoner_a, Strategy.AlwaysBetray);
+        // if they are the same order doesnt matter
+        var prisoner_A = &prisoners.items[index_prisoner_A];
+        var prisoner_B = &prisoners.items[index_prisoner_B];
 
-        try actions_prisoner_a.append(new_action_a);
-        try actions_prisoner_b.append(new_action_b);
+        // 2. make them interact 30 or so times
 
-        // based on the score matrix we add the new scores to the prisoners scores
-        //  reward for interacting or defecting
-        //          a coop | a defect
-        // b coop        1 | 2
-        // b defect      2 | 0
-        if (new_action_a == Action.Cooperate and new_action_b == Action.Cooperate) {
-            score_prisoner_a += 1;
-            score_prisoner_b += 1;
-        } else if (new_action_a == Action.Betray and new_action_b == Action.Betray) {
-            // This is just here for sake of completeness
-            score_prisoner_a += 0;
-            score_prisoner_b += 0;
-        } else if (new_action_a == Action.Betray and new_action_b == Action.Cooperate) {
-            score_prisoner_a += 2;
-            score_prisoner_b += 0;
-        } else if (new_action_a == Action.Cooperate and new_action_b == Action.Betray) {
-            score_prisoner_a += 0;
-            score_prisoner_b += 2;
+        // get the interaction history
+        // interaction history is always from perspective of prisoner a
+
+        const key_actions_prisoner_A: u32 = @as(u32, index_prisoner_A) + @as(u32, index_prisoner_B) * (std.math.maxInt(u16) + 1);
+        const key_actions_prisoner_B: u32 = @as(u32, index_prisoner_B) + @as(u32, index_prisoner_A) * (std.math.maxInt(u16) + 1);
+
+        const maybe_history_actions_prisoner_A = try interactions_map.getOrPut(key_actions_prisoner_A);
+        const maybe_history_actions_prisoner_B = try interactions_map.getOrPut(key_actions_prisoner_B);
+
+        if (!maybe_history_actions_prisoner_A.found_existing) {
+            maybe_history_actions_prisoner_A.value_ptr.* = std.array_list.Managed(Action).init(allocator);
+        }
+        if (!maybe_history_actions_prisoner_B.found_existing) {
+            maybe_history_actions_prisoner_B.value_ptr.* = std.array_list.Managed(Action).init(allocator);
+        }
+
+        var history_actions_prisoner_A = maybe_history_actions_prisoner_A.value_ptr;
+        var history_actions_prisoner_B = maybe_history_actions_prisoner_B.value_ptr;
+
+        // 3. run through all the interactions between the two prisoners
+
+        var interactions_counter: u8 = 0;
+
+        while (interactions_counter < interactions_per_pairing) : (interactions_counter += 1) {
+            const new_action_prisoner_A = try apply_strategy(history_actions_prisoner_B, prisoner_A.strategy);
+            const new_action_prisoner_B = try apply_strategy(history_actions_prisoner_A, prisoner_B.strategy);
+
+            // here we introduce signal error -> evaluation happens based on the real action but signal error is applied when saving
+            const SIGNAL_ERROR_RATE = 0.9;
+
+            const with_signal_error_new_action_prisoner_A = if (random_float_zero_one() < SIGNAL_ERROR_RATE) Action.Betray else new_action_prisoner_A;
+            const with_signal_error_new_action_prisoner_B = if (random_float_zero_one() < SIGNAL_ERROR_RATE) Action.Betray else new_action_prisoner_B;
+            try history_actions_prisoner_A.append(with_signal_error_new_action_prisoner_A);
+            try history_actions_prisoner_B.append(with_signal_error_new_action_prisoner_B);
+
+            // based on the score matrix we add the new scores to the prisoners scores
+            //  reward for interacting or defecting
+            //          a coop | a defect
+            // b coop        1 | 2
+            // b defect      2 | 0
+            if (new_action_prisoner_A == Action.Cooperate and new_action_prisoner_B == Action.Cooperate) {
+                prisoner_A.score += 1;
+                prisoner_B.score += 1;
+            } else if (new_action_prisoner_A == Action.Betray and new_action_prisoner_B == Action.Betray) {
+                // This is just here for sake of completeness
+                prisoner_A.score += 0;
+                prisoner_B.score += 0;
+            } else if (new_action_prisoner_A == Action.Betray and new_action_prisoner_B == Action.Cooperate) {
+                prisoner_A.score += 2;
+                prisoner_B.score += 0;
+            } else if (new_action_prisoner_A == Action.Cooperate and new_action_prisoner_B == Action.Betray) {
+                prisoner_A.score += 0;
+                prisoner_B.score += 2;
+            }
         }
     }
 
-    std.debug.print("prisoner a actions: {any} final score: {any}\n", .{ actions_prisoner_a, score_prisoner_a });
-    std.debug.print("prisoner b actions: {any} final score: {any}\n", .{ actions_prisoner_b, score_prisoner_b });
+    // Immediately deallocate all the entries after the loop
+    var interactions_map_iterator = interactions_map.iterator();
 
-    //     const randomPrisoner1Index: u16 = toInt(std.math.floor(random_float_zero_one() * toFloat(numberOfPrisoners)));
-    //     const randomPrisoner2Index: u16 = toInt(std.math.floor(random_float_zero_one() * toFloat(numberOfPrisoners)));
+    defer while (interactions_map_iterator.next()) |entry| {
+        const array_list_pointer = entry.value_ptr;
+        array_list_pointer.*.deinit();
+    };
+
+    // Displaying the highest scoring for each strategy
+
+    // A hash map to store the highest-scoring prisoner for each strategy
+    var highest_scores = std.AutoHashMap(Strategy, Prisoner).init(allocator);
+    defer highest_scores.deinit();
+
+    // Iterate through all prisoners to find the highest score for each strategy
+    for (prisoners.items) |prisoner| {
+        if (highest_scores.get(prisoner.strategy)) |existing_prisoner| {
+            // Found an entry, compare scores and update if higher
+            if (prisoner.score > existing_prisoner.score) {
+                try highest_scores.put(prisoner.strategy, prisoner);
+            }
+        } else {
+            // First time seeing this strategy, add it to the map
+            try highest_scores.put(prisoner.strategy, prisoner);
+        }
+    }
+
+    // Iterate through the hash map and print the results
+    var iterator = highest_scores.iterator();
+    while (iterator.next()) |entry| {
+        std.debug.print("Highest-scoring {any}: {d}\n", .{ entry.key_ptr.*, entry.value_ptr.*.score });
+    }
 }
 
 // test "simple test" {
