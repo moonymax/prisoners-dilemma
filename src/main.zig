@@ -14,10 +14,7 @@ fn random_float_zero_one() f32 {
     return prng.random().float(f32);
 }
 
-const Prisoner = struct {
-    strategy: Strategy,
-    score: u32,
-};
+const Prisoner = struct { strategy: Strategy, score: u32 };
 
 // many strategies different forgiveness percentages
 // many agents with a strategy
@@ -34,7 +31,11 @@ const Prisoner = struct {
 
 const Action = enum { Betray, Cooperate };
 
-const Strategy = enum { TitForTat, AlwaysBetray, TitForTatBetrayLast, TitForTat10pctForgiveness };
+const Strategy = enum { TitForTat, AlwaysBetray, TitForTatBetrayLast, TitForTat10pctForgiveness, TitForTat20pctForgiveness, TitForTatBetrayRandom, TitForTatBadJudgement, AlwaysBetrayBadJudgement, TitForTatBetrayLastBadJudgement, TitForTat10pctForgivenessBadJudgement, TitForTat20pctForgivenessBadJudgement, TitForTatBetrayRandomBadJudgement };
+
+const number_of_strategies = @typeInfo(Strategy).@"enum".fields.len;
+
+const index_to_strategy = [number_of_strategies]Strategy{ Strategy.TitForTat, Strategy.AlwaysBetray, Strategy.TitForTatBetrayLast, Strategy.TitForTat10pctForgiveness, Strategy.TitForTat20pctForgiveness, Strategy.TitForTatBetrayRandom, Strategy.TitForTatBadJudgement, Strategy.AlwaysBetrayBadJudgement, Strategy.TitForTatBetrayLastBadJudgement, Strategy.TitForTat10pctForgivenessBadJudgement, Strategy.TitForTat20pctForgivenessBadJudgement, Strategy.TitForTatBetrayRandomBadJudgement };
 
 const StrategyError = error{InvalidStrategy};
 
@@ -57,9 +58,33 @@ fn titForTat10pctForgiveness(opponents_history: *const std.array_list.Managed(Ac
     return Action.Betray;
 }
 
+fn titForTat20pctForgiveness(opponents_history: *const std.array_list.Managed(Action)) Action {
+    const action_previous = if (opponents_history.items.len > 0) opponents_history.items[opponents_history.items.len - 1] else Action.Cooperate;
+    if (action_previous == Action.Cooperate) {
+        return Action.Cooperate;
+    }
+
+    // we forgive 10pct of the time
+    const should_forgive = random_float_zero_one() < 0.8;
+    if (action_previous == Action.Betray and should_forgive) {
+        return Action.Cooperate;
+    }
+
+    return Action.Betray;
+}
+
 fn titForTatBetrayLast(opponents_history: *const std.array_list.Managed(Action)) Action {
     if (opponents_history.items.len < 29) {
         return titForTat(opponents_history);
+    } else {
+        return Action.Betray;
+    }
+}
+
+fn titForTatRandomBetray(opponents_history: *const std.array_list.Managed(Action)) Action {
+    const action_base = titForTat(opponents_history);
+    if (action_base == Action.Cooperate) {
+        return if (random_float_zero_one() < 0.1) Action.Betray else Action.Cooperate;
     } else {
         return Action.Betray;
     }
@@ -79,6 +104,71 @@ fn apply_strategy(opponents_history: *const std.array_list.Managed(Action), stra
         Strategy.TitForTat10pctForgiveness => {
             return titForTat10pctForgiveness(opponents_history);
         },
+        Strategy.TitForTat20pctForgiveness => {
+            return titForTat20pctForgiveness(opponents_history);
+        },
+        Strategy.TitForTatBetrayRandom => {
+            return titForTatRandomBetray(opponents_history);
+        },
+        Strategy.AlwaysBetrayBadJudgement => {
+            return Action.Betray;
+        },
+        Strategy.TitForTatBadJudgement => {
+            return titForTat(opponents_history);
+        },
+        Strategy.TitForTatBetrayLastBadJudgement => {
+            return titForTatBetrayLast(opponents_history);
+        },
+        Strategy.TitForTat10pctForgivenessBadJudgement => {
+            return titForTat10pctForgiveness(opponents_history);
+        },
+        Strategy.TitForTat20pctForgivenessBadJudgement => {
+            return titForTat20pctForgiveness(opponents_history);
+        },
+        Strategy.TitForTatBetrayRandomBadJudgement => {
+            return titForTatRandomBetray(opponents_history);
+        },
+    }
+}
+
+fn strategy_has_bad_judgement(strategy: Strategy) bool {
+    switch (strategy) {
+        Strategy.AlwaysBetray => {
+            return false;
+        },
+        Strategy.TitForTat => {
+            return false;
+        },
+        Strategy.TitForTatBetrayLast => {
+            return false;
+        },
+        Strategy.TitForTat10pctForgiveness => {
+            return false;
+        },
+        Strategy.TitForTat20pctForgiveness => {
+            return false;
+        },
+        Strategy.TitForTatBetrayRandom => {
+            return false;
+        },
+        Strategy.AlwaysBetrayBadJudgement => {
+            return true;
+        },
+        Strategy.TitForTatBadJudgement => {
+            return true;
+        },
+        Strategy.TitForTatBetrayLastBadJudgement => {
+            return true;
+        },
+        Strategy.TitForTat10pctForgivenessBadJudgement => {
+            return true;
+        },
+        Strategy.TitForTat20pctForgivenessBadJudgement => {
+            return false;
+        },
+        Strategy.TitForTatBetrayRandomBadJudgement => {
+            return true;
+        },
     }
 }
 
@@ -88,10 +178,6 @@ fn comparePrisonersByScore(context: void, a: Prisoner, b: Prisoner) bool {
 
     return a.score < b.score;
 }
-
-const number_of_strategies = @typeInfo(Strategy).@"enum".fields.len;
-
-const index_to_strategy = [number_of_strategies]Strategy{ Strategy.AlwaysBetray, Strategy.TitForTat, Strategy.TitForTatBetrayLast, Strategy.TitForTat10pctForgiveness };
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -113,7 +199,8 @@ pub fn main() !void {
     while (prisoner_counter < number_of_prisoners) : (prisoner_counter += 1) {
         //                                                                      based in the index this prsoner gets a strategy
         //                                                                      prisoner_counter % number_of_strategies gives use wrap around behaviour incase the index is larger than the number of strategies we have
-        try prisoners.append(Prisoner{ .score = 0, .strategy = index_to_strategy[prisoner_counter % number_of_strategies] });
+        const strategy = index_to_strategy[prisoner_counter % number_of_strategies];
+        try prisoners.append(Prisoner{ .score = 0, .strategy = strategy });
     }
 
     const PAIRINGS_PER_ROUND: u32 = 100_000;
@@ -160,10 +247,12 @@ pub fn main() !void {
             const new_action_prisoner_B = try apply_strategy(history_actions_prisoner_A, prisoner_B.strategy);
 
             // here we introduce signal error -> evaluation happens based on the real action but signal error is applied when saving
-            const SIGNAL_ERROR_RATE = 0.9;
+            // maybe move the signal error into the strategy
+            const rate_signal_error_prisoner_A: f32 = if (strategy_has_bad_judgement(prisoner_A.strategy)) 0.9 else 0.9;
+            const rate_signal_error_prisoner_B: f32 = if (strategy_has_bad_judgement(prisoner_B.strategy)) 0.9 else 0.9;
 
-            const with_signal_error_new_action_prisoner_A = if (random_float_zero_one() < SIGNAL_ERROR_RATE) Action.Betray else new_action_prisoner_A;
-            const with_signal_error_new_action_prisoner_B = if (random_float_zero_one() < SIGNAL_ERROR_RATE) Action.Betray else new_action_prisoner_B;
+            const with_signal_error_new_action_prisoner_A = if (random_float_zero_one() < rate_signal_error_prisoner_A) Action.Betray else new_action_prisoner_A;
+            const with_signal_error_new_action_prisoner_B = if (random_float_zero_one() < rate_signal_error_prisoner_B) Action.Betray else new_action_prisoner_B;
             try history_actions_prisoner_A.append(with_signal_error_new_action_prisoner_A);
             try history_actions_prisoner_B.append(with_signal_error_new_action_prisoner_B);
 
@@ -216,11 +305,79 @@ pub fn main() !void {
         }
     }
 
-    // Iterate through the hash map and print the results
-    var iterator = highest_scores.iterator();
-    while (iterator.next()) |entry| {
-        std.debug.print("Highest-scoring {any}: {d}\n", .{ entry.key_ptr.*, entry.value_ptr.*.score });
+    var highest_scores_prisoner_array = std.array_list.Managed(Prisoner).init(allocator);
+    defer highest_scores_prisoner_array.deinit();
+    var iterator_highest_score = highest_scores.iterator();
+    while (iterator_highest_score.next()) |prisoner| {
+        try highest_scores_prisoner_array.append(prisoner.value_ptr.*);
     }
+
+    std.sort.pdq(Prisoner, highest_scores_prisoner_array.items, {}, comparePrisonersByScore);
+
+    for (highest_scores_prisoner_array.items) |entry| {
+        std.debug.print("Highest-scoring Prisoner of {any}: {d}\n", .{ entry.strategy, entry.score });
+    }
+    std.debug.print("\n", .{});
+
+    var score_total_by_population = std.AutoHashMap(Strategy, Prisoner).init(allocator);
+    defer score_total_by_population.deinit();
+
+    // Iterate through all prisoners to find the highest score for each strategy
+    for (prisoners.items) |prisoner| {
+        if (score_total_by_population.get(prisoner.strategy)) |score_existing_prisoner| {
+            // Found an entry, add the score of this prisoner to the population score
+            const new_prisoner_representing_the_population = Prisoner{ .strategy = prisoner.strategy, .score = score_existing_prisoner.score + prisoner.score };
+            try score_total_by_population.put(prisoner.strategy, new_prisoner_representing_the_population);
+        } else {
+            // First time seeing this strategy, add it to the map
+            try score_total_by_population.put(prisoner.strategy, prisoner);
+        }
+    }
+
+    var total_scores_prisoner_array = std.array_list.Managed(Prisoner).init(allocator);
+    defer total_scores_prisoner_array.deinit();
+    var iterator_total_score = score_total_by_population.iterator();
+    while (iterator_total_score.next()) |prisoner| {
+        try total_scores_prisoner_array.append(prisoner.value_ptr.*);
+    }
+
+    std.sort.pdq(Prisoner, total_scores_prisoner_array.items, {}, comparePrisonersByScore);
+
+    // Iterate through the hash map and print the results
+    for (total_scores_prisoner_array.items) |entry| {
+        std.debug.print("Total Population Score of {any}: {d}\n", .{ entry.strategy, entry.score });
+    }
+    std.debug.print("\n", .{});
+
+    var lowest_score_prisoner = std.AutoHashMap(Strategy, Prisoner).init(allocator);
+    defer lowest_score_prisoner.deinit();
+
+    // Iterate through all prisoners to find the highest score for each strategy
+    for (prisoners.items) |prisoner| {
+        if (lowest_score_prisoner.get(prisoner.strategy)) |score_existing_prisoner| {
+            if (prisoner.score < score_existing_prisoner.score) {
+                try highest_scores.put(prisoner.strategy, prisoner);
+            }
+        } else {
+            // First time seeing this strategy, add it to the map
+            try lowest_score_prisoner.put(prisoner.strategy, prisoner);
+        }
+    }
+
+    var lowest_scores_prisoner_array = std.array_list.Managed(Prisoner).init(allocator);
+    defer lowest_scores_prisoner_array.deinit();
+    var iterator_lowest_score = lowest_score_prisoner.iterator();
+    while (iterator_lowest_score.next()) |prisoner| {
+        try lowest_scores_prisoner_array.append(prisoner.value_ptr.*);
+    }
+
+    std.sort.pdq(Prisoner, lowest_scores_prisoner_array.items, {}, comparePrisonersByScore);
+
+    // Iterate through the hash map and print the results
+    for (lowest_scores_prisoner_array.items) |entry| {
+        std.debug.print("Lowest-scoring Prisoner of {any}: {d}\n", .{ entry.strategy, entry.score });
+    }
+    std.debug.print("\n", .{});
 }
 
 // test "simple test" {
