@@ -166,4 +166,35 @@ Lowest-scoring Prisoner of .TitForTat50pctForgiveness: 4196
 Tit-for-tat has lost rank in the highest and lowest performing category while having gained in the average. Tit-for-tat has also gained absolute score in the highest performing category. Not enough, however, to overtake betray last which has gained absolute score in the highest scoring but only very little.
 Overall scores of society have sunk and in the lowest performing category only betray last and tit-for-tat with forgiveness have gained absolute score.
 
+70% forgiveness:
+
+Highest-scoring Prisoner of .AlwaysBetray: 3220
+Highest-scoring Prisoner of .TitForTat: 3619
+Highest-scoring Prisoner of .TitForTatBetrayLast: 3709
+Highest-scoring Prisoner of .TitForTat70pctForgiveness: 4883
+
+Total Population Score of .AlwaysBetray: 580738
+Total Population Score of .TitForTat: 714161
+Total Population Score of .TitForTatBetrayLast: 733132
+Total Population Score of .TitForTat70pctForgiveness: 1006455
+
+Lowest-scoring Prisoner of .AlwaysBetray: 2142
+Lowest-scoring Prisoner of .TitForTatBetrayLast: 2587
+Lowest-scoring Prisoner of .TitForTat: 2869
+Lowest-scoring Prisoner of .TitForTat70pctForgiveness: 3933
+
+### Forgiveness in a High Signal Error Environment
+
 ## Introducing varying levels of judgement
+
+## Introducing intelligent actors
+
+An agent which given an interaction history will try to determine which strategy its opponent is using. This can then be used for good and malicious strategies. An RL agent tries to maximise score -> reconstruction loss (in the middle it should have an auto encoder which tries to classify the opponents strategy) -> interpretability using sparse auto encoders
+
+## Introducing gossip
+
+We can model the beliefs that a prisoner has about the opponents they have interacted with using a bayesian decision tree. We can then model gossip about those beliefs (information propagation through society) using a markov chain.
+
+## Modeling a loosing prisoners dilemma
+
+## Evolution

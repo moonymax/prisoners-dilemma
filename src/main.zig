@@ -31,13 +31,13 @@ const Prisoner = struct { strategy: Strategy, score: u32 };
 
 const Action = enum { Betray, Cooperate };
 
-//const Strategy = enum { TitForTat, AlwaysBetray, TitForTatBetrayLast, TitForTat10pctForgiveness, TitForTat20pctForgiveness, TitForTat30pctForgiveness, TitForTat50pctForgiveness, TitForTatBetrayRandom, TitForTatBadJudgement, AlwaysBetrayBadJudgement, TitForTatBetrayLastBadJudgement, TitForTat10pctForgivenessBadJudgement, TitForTat20pctForgivenessBadJudgement, TitForTatBetrayRandomBadJudgement };
-const Strategy = enum { TitForTat, AlwaysBetray, TitForTatBetrayLast, TitForTat50pctForgiveness };
+//const Strategy = enum { TitForTat, AlwaysBetray, TitForTatBetrayLast, TitForTat10pctForgiveness, TitForTat20pctForgiveness, TitForTat30pctForgiveness, TitForTat50pctForgiveness, TitForTat70pctForgiveness, TitForTatBetrayRandom, TitForTatBadJudgement, AlwaysBetrayBadJudgement, TitForTatBetrayLastBadJudgement, TitForTat10pctForgivenessBadJudgement, TitForTat20pctForgivenessBadJudgement, TitForTatBetrayRandomBadJudgement };
+const Strategy = enum { TitForTat, AlwaysBetray, TitForTatBetrayLast, TitForTat70pctForgiveness };
 
 const number_of_strategies = @typeInfo(Strategy).@"enum".fields.len;
 
-//const index_to_strategy = [number_of_strategies]Strategy{ Strategy.TitForTat, Strategy.AlwaysBetray, Strategy.TitForTatBetrayLast, Strategy.TitForTat10pctForgiveness, Strategy.TitForTat20pctForgiveness, Strategy.TitForTat30pctForgiveness, Strategy.TitForTat50pctForgiveness, Strategy.TitForTat30pctForgiveness, Strategy.TitForTatBetrayRandom, Strategy.TitForTatBadJudgement, Strategy.AlwaysBetrayBadJudgement, Strategy.TitForTatBetrayLastBadJudgement, Strategy.TitForTat10pctForgivenessBadJudgement, Strategy.TitForTat20pctForgivenessBadJudgement, Strategy.TitForTatBetrayRandomBadJudgement };
-const index_to_strategy = [number_of_strategies]Strategy{ Strategy.TitForTat, Strategy.AlwaysBetray, Strategy.TitForTatBetrayLast, Strategy.TitForTat50pctForgiveness };
+//const index_to_strategy = [number_of_strategies]Strategy{ Strategy.TitForTat, Strategy.AlwaysBetray, Strategy.TitForTatBetrayLast, Strategy.TitForTat10pctForgiveness, Strategy.TitForTat20pctForgiveness, Strategy.TitForTat30pctForgiveness, Strategy.TitForTat50pctForgiveness, Strategy.TitForTat70pctForgiveness, Strategy.TitForTatBetrayRandom, Strategy.TitForTatBadJudgement, Strategy.AlwaysBetrayBadJudgement, Strategy.TitForTatBetrayLastBadJudgement, Strategy.TitForTat10pctForgivenessBadJudgement, Strategy.TitForTat20pctForgivenessBadJudgement, Strategy.TitForTatBetrayRandomBadJudgement };
+const index_to_strategy = [number_of_strategies]Strategy{ Strategy.TitForTat, Strategy.AlwaysBetray, Strategy.TitForTatBetrayLast, Strategy.TitForTat70pctForgiveness };
 
 const StrategyError = error{InvalidStrategy};
 
@@ -105,6 +105,21 @@ fn titForTat50pctForgiveness(opponents_history: *const std.array_list.Managed(Ac
     return Action.Betray;
 }
 
+fn titForTat70pctForgiveness(opponents_history: *const std.array_list.Managed(Action)) Action {
+    const action_previous = if (opponents_history.items.len > 0) opponents_history.items[opponents_history.items.len - 1] else Action.Cooperate;
+    if (action_previous == Action.Cooperate) {
+        return Action.Cooperate;
+    }
+
+    // we forgive 70pct of the time
+    const should_forgive = random_float_zero_one() < 0.7;
+    if (action_previous == Action.Betray and should_forgive) {
+        return Action.Cooperate;
+    }
+
+    return Action.Betray;
+}
+
 fn titForTatBetrayLast(opponents_history: *const std.array_list.Managed(Action)) Action {
     if (opponents_history.items.len < 29) {
         return titForTat(opponents_history);
@@ -142,9 +157,13 @@ fn apply_strategy(opponents_history: *const std.array_list.Managed(Action), stra
         // Strategy.TitForTat30pctForgiveness => {
         //     return titForTat30pctForgiveness(opponents_history);
         // },
-        Strategy.TitForTat50pctForgiveness => {
-            return titForTat50pctForgiveness(opponents_history);
+        // Strategy.TitForTat50pctForgiveness => {
+        //     return titForTat50pctForgiveness(opponents_history);
+        // },
+        Strategy.TitForTat70pctForgiveness => {
+            return titForTat70pctForgiveness(opponents_history);
         },
+
         // Strategy.TitForTatBetrayRandom => {
         //     return titForTatRandomBetray(opponents_history);
         // },
@@ -189,7 +208,10 @@ fn strategy_has_bad_judgement(strategy: Strategy) bool {
         // Strategy.TitForTat30pctForgiveness => {
         //     return false;
         // },
-        Strategy.TitForTat50pctForgiveness => {
+        // Strategy.TitForTat50pctForgiveness => {
+        //     return false;
+        // },
+        Strategy.TitForTat70pctForgiveness => {
             return false;
         },
         // Strategy.TitForTatBetrayRandom => {
