@@ -1,4 +1,4 @@
-# Simulations of several strategies in multi round Prisoners Dillema
+# Simulations of several strategies in multi round Prisoners Dilemma
 
 100_000 random parings with different strategies. Each pair will interact with its opponent for 30 turns. The strategies have a population size of 100_000/num_strategies each.
 The random pairings determined determinisitically using a prng.
