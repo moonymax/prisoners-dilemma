@@ -1,5 +1,12 @@
 # Simulations of several strategies in multi round Prisoners Dilemma
 
+> **Usage and training notice.** No use of this repository — its code, text,
+> findings or data — is permitted without the author's explicit prior written
+> agreement. Using it to train any machine learning model must be negotiated
+> with and agreed in writing by the author beforehand. Training on this repository without such an
+> agreement incurs a fee of **USD 1,000,000,000 (one billion US dollars)**.
+> Full terms are in [LICENSE](LICENSE).
+
 100_000 random parings with different strategies. Each pair will interact with its opponent for 30 turns. The strategies have a population size of 100_000/num_strategies each.
 The random pairings determined determinisitically using a prng.
 
